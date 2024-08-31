@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { UploadDropzone } from "@/app/utils/UploadthingComponents";
 import TailwindEditor from "@/app/components/dashboard/EditorWrapper";
 import { CreatePostAction } from "@/app/actions";
+import { SubmitButton } from "@/app/components/dashboard/SubmitButtons";
 const ArticleCreationRoute = ({
     params,
 }: {
@@ -28,7 +29,7 @@ const ArticleCreationRoute = ({
     const [title, setTitle] = useState<undefined | string>(undefined);
     const [lastResult, action] = useActionState(CreatePostAction, undefined);
     const [form, fields] = useForm({
-        // lastResult,
+        lastResult,
 
         onValidate({ formData }) {
             return parseWithZod(formData, { schema: PostSchema });
@@ -66,7 +67,9 @@ const ArticleCreationRoute = ({
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <form className="flex flex-col gap-6">
+                    <form className="flex flex-col gap-6" id={form.id}
+                        onSubmit={form.onSubmit}
+                        action={action}>
                         <input type="hidden" name="siteId" value={params.siteId} />
                         <div className="grid gap-2">
                             <Label>Title</Label>
@@ -159,6 +162,7 @@ const ArticleCreationRoute = ({
                                 {fields.articleContent.errors}
                             </p>
                         </div>
+                        <SubmitButton text="Create Article" />
                     </form>
                 </CardContent>
             </Card>
