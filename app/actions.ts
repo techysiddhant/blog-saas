@@ -5,6 +5,7 @@ import { parseWithZod } from "@conform-to/zod";
 import { PostSchema, SiteCreationSchema, siteSchema } from "./utils/zodSchemas";
 import prisma from "./utils/db";
 import { requireUser } from "./utils/requireUser";
+import { stripe } from "./utils/stripe";
 // export async function CreateSiteAction(prevState: any, formData: FormData) {
 //   const { getUser } = getKindeServerSession();
 //   const user = await getUser();
@@ -205,4 +206,50 @@ export async function DeleteSite(formData: FormData) {
   });
 
   return redirect("/dashboard/sites");
+}
+export async function CreateSubscription() {
+  const user = await requireUser();
+
+  let stripeUserId = await prisma.user.findUnique({
+    where: {
+      id: user.id,
+    },
+    select: {
+      customerId: true,
+      email: true,
+      firstName: true,
+    },
+  });
+
+  if (!stripeUserId?.customerId) {
+    const stripeCustomer = await stripe.customers.create({
+      email: stripeUserId?.email,
+      name: stripeUserId?.firstName,
+    });
+
+    stripeUserId = await prisma.user.update({
+      where: {
+        id: user.id,
+      },
+      data: {
+        customerId: stripeCustomer.id,
+      },
+    });
+  }
+
+  const session = await stripe.checkout.sessions.create({
+    customer: stripeUserId.customerId as string,
+    mode: "subscription",
+    billing_address_collection: "auto",
+    payment_method_types: ["card"],
+    line_items: [{ price: process.env.STRIPE_PRICE_ID, quantity: 1 }],
+    customer_update: {
+      address: "auto",
+      name: "auto",
+    },
+    success_url: process.env.STRIPE_SUCCESS_URL,
+    cancel_url: process.env.STRIPE_CANCEL_URL,
+  });
+
+  return redirect(session.url as string);
 }
