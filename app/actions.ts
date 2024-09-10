@@ -2,34 +2,118 @@
 import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
 import { redirect } from "next/navigation";
 import { parseWithZod } from "@conform-to/zod";
-import { PostSchema, siteSchema } from "./utils/zodSchemas";
+import { PostSchema, SiteCreationSchema, siteSchema } from "./utils/zodSchemas";
 import prisma from "./utils/db";
 import { requireUser } from "./utils/requireUser";
+// export async function CreateSiteAction(prevState: any, formData: FormData) {
+//   const { getUser } = getKindeServerSession();
+//   const user = await getUser();
+//   if (!user) {
+//     return redirect("/api/auth/login");
+//   }
+
+//   const submission = parseWithZod(formData, {
+//     schema: siteSchema,
+//   });
+
+//   if (submission.status !== "success") {
+//     return submission.reply();
+//   }
+//   const response = await prisma.site.create({
+//     data: {
+//       description: submission.value.description,
+//       name: submission.value.name,
+//       subdirectory: submission.value.subdirectory,
+//       userId: user.id,
+//     },
+//   });
+//   return redirect("/dashboard/sites");
+// }
 export async function CreateSiteAction(prevState: any, formData: FormData) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
-  if (!user) {
-    return redirect("/api/auth/login");
-  }
+  const user = await requireUser();
 
-  const submission = parseWithZod(formData, {
-    schema: siteSchema,
-  });
+  const [subStatus, sites] = await Promise.all([
+    prisma.subscription.findUnique({
+      where: {
+        userId: user.id,
+      },
+      select: {
+        status: true,
+      },
+    }),
+    prisma.site.findMany({
+      where: {
+        userId: user.id,
+      },
+    }),
+  ]);
 
-  if (submission.status !== "success") {
-    return submission.reply();
+  if (!subStatus || subStatus.status !== "active") {
+    if (sites.length < 1) {
+      // Allow creating a site
+      const submission = await parseWithZod(formData, {
+        schema: SiteCreationSchema({
+          async isSubdirectoryUnique() {
+            const exisitngSubDirectory = await prisma.site.findUnique({
+              where: {
+                subdirectory: formData.get("subdirectory") as string,
+              },
+            });
+            return !exisitngSubDirectory;
+          },
+        }),
+        async: true,
+      });
+
+      if (submission.status !== "success") {
+        return submission.reply();
+      }
+
+      const response = await prisma.site.create({
+        data: {
+          description: submission.value.description,
+          name: submission.value.name,
+          subdirectory: submission.value.subdirectory,
+          userId: user.id,
+        },
+      });
+
+      return redirect("/dashboard/sites");
+    } else {
+      // user alredy has one site dont allow
+      return redirect("/dashboard/pricing");
+    }
+  } else if (subStatus.status === "active") {
+    // User has a active plan he can create sites...
+    const submission = await parseWithZod(formData, {
+      schema: SiteCreationSchema({
+        async isSubdirectoryUnique() {
+          const exisitngSubDirectory = await prisma.site.findUnique({
+            where: {
+              subdirectory: formData.get("subdirectory") as string,
+            },
+          });
+          return !exisitngSubDirectory;
+        },
+      }),
+      async: true,
+    });
+
+    if (submission.status !== "success") {
+      return submission.reply();
+    }
+
+    const response = await prisma.site.create({
+      data: {
+        description: submission.value.description,
+        name: submission.value.name,
+        subdirectory: submission.value.subdirectory,
+        userId: user.id,
+      },
+    });
+    return redirect("/dashboard/sites");
   }
-  const response = await prisma.site.create({
-    data: {
-      description: submission.value.description,
-      name: submission.value.name,
-      subdirectory: submission.value.subdirectory,
-      userId: user.id,
-    },
-  });
-  return redirect("/dashboard/sites");
 }
-
 export async function CreatePostAction(prevState: any, formData: FormData) {
   const user = await requireUser();
 
